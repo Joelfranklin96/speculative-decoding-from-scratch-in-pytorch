@@ -123,7 +123,12 @@ class TinyGPT(nn.Module):
     def forward(self, idx, cache=None, return_hidden=False):
         # TODO: positions offset by the cached length; return (logits, new_cache[, hidden])
         new_cache = []
-        x = self.tok(idx) + self.pos(torch.arange(len(idx)))
+        T = idx.shape[-1]
+        if cache is None:
+            offset = 0
+        else:
+            offset = cache[0][0].shape[2]
+        x = self.tok(idx) + self.pos(torch.arange(offset, offset + T))
         if cache is None:
             for block in self.blocks:
                 (x, (k, v)) = block.forward(x, None)
@@ -139,4 +144,32 @@ class TinyGPT(nn.Module):
             return logits, new_cache, hidden
         else:
             return logits, new_cache
+
+# Step 3 - train_lm
+import torch
+import torch.nn as nn
+
+def get_batch(data, batch, seq_len, gen):
+    # TODO: random offsets; x and y shifted by one
+    ids = torch.randint(0, len(data) - seq_len - 1, (batch, ), generator=gen)
+    x = torch.ones(batch, seq_len)
+    y = torch.ones(batch, seq_len)
+    for i, id_ in enumerate(ids):
+        x[i] = data[id_:id_ + seq_len]
+        y[i] = data[id_ + 1:id_ + 1 + seq_len]
+    return (x, y)
+
+def train_lm(model, data, steps, lr=3e-3, batch=32, seq_len=64, seed=0):
+    # TODO: AdamW, cross-entropy, clip at 1.0, return losses
+    gen = torch.Generator(device='cpu').manual_seed(seed)
+    x, y = get_batch(data, batch, seq_len, gen)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
+    logits = model(x)
+    loss = criterion(logits, y)
+    pass
+
+def make_models(seed=0, target_steps=300, draft_steps=300):
+    # TODO: corpus, tokenizer, data tensor; target (64, 2, 4) and draft (32, 1, 2); train; eval
+    pass
 
