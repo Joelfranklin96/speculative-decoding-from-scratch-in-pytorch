@@ -152,8 +152,8 @@ import torch.nn as nn
 def get_batch(data, batch, seq_len, gen):
     # TODO: random offsets; x and y shifted by one
     ids = torch.randint(0, len(data) - seq_len - 1, (batch, ), generator=gen)
-    x = torch.ones(batch, seq_len)
-    y = torch.ones(batch, seq_len)
+    x = torch.empty(batch, seq_len, dtype=torch.long)
+    y = torch.empty(batch, seq_len, dtype=torch.long)
     for i, id_ in enumerate(ids):
         x[i] = data[id_:id_ + seq_len]
         y[i] = data[id_ + 1:id_ + 1 + seq_len]
@@ -162,14 +162,34 @@ def get_batch(data, batch, seq_len, gen):
 def train_lm(model, data, steps, lr=3e-3, batch=32, seq_len=64, seed=0):
     # TODO: AdamW, cross-entropy, clip at 1.0, return losses
     gen = torch.Generator(device='cpu').manual_seed(seed)
-    x, y = get_batch(data, batch, seq_len, gen)
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
-    logits = model(x)
-    loss = criterion(logits, y)
-    pass
+    losses = []
+    for step in range(steps):
+        x, y = get_batch(data, batch, seq_len, gen)
+        optimizer.zero_grad()
+        logits, _ = model(x)
+        loss = criterion(logits.reshape(-1, logits.shape[2]), y.reshape(-1))
+        losses.append(loss.item())
+        loss.backward()
+        nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        optimizer.step()
+    return losses
 
 def make_models(seed=0, target_steps=300, draft_steps=300):
     # TODO: corpus, tokenizer, data tensor; target (64, 2, 4) and draft (32, 1, 2); train; eval
-    pass
+    
+    corpus = make_corpus(400, seed)
+    tok = CharTokenizer(corpus)
+    data = torch.tensor(tok.encode(corpus), dtype=torch.long)
+    vocab = tok.vocab
+    torch.manual_seed(seed)
+    target_model = TinyGPT(vocab, 64, 2, 4, max_len=512)
+    torch.manual_seed(seed + 1)
+    draft_model = TinyGPT(vocab, 32, 1, 2)
+    train_lm(target_model, data, target_steps, seed=seed)
+    train_lm(draft_model, data, draft_steps, seed=seed)
+    target_model.eval()
+    draft_model.eval()
+    return (tok, data, target_model, draft_model)
 
