@@ -193,3 +193,42 @@ def make_models(seed=0, target_steps=300, draft_steps=300):
     draft_model.eval()
     return (tok, data, target_model, draft_model)
 
+# Step 4 - generate
+import torch
+import torch.nn.functional as F
+
+def sample_from(probs, gen):
+    # TODO: multinomial draw as an int
+    return torch.multinomial(probs, 1, generator=gen)
+
+def next_probs(logits_row, temperature):
+    # TODO: softmax at temperature, or one-hot argmax at temperature 0
+    if temperature == 0:
+        max_id = torch.argmax(logits_row)
+        return F.one_hot(max_id, num_classes=len(logits_row)).float()
+    else:
+        return torch.softmax(logits_row/temperature, dim=-1)
+
+
+@torch.no_grad()
+def generate(model, prompt, n, temperature=1.0, gen=None):
+    # TODO: prompt pass, then n sampled tokens through the cache; return (tokens, passes) with passes == n
+    tokens = []
+    passes = 0
+    kv_cache = None
+    prompt = prompt.reshape(1, -1)
+    while passes < n:
+        if passes == 0:
+            prompt_ids = prompt
+        else:
+            prompt_ids = next_id
+        logits, cache = model.forward(prompt_ids, kv_cache)
+        kv_cache = cache
+        last_logit = logits[0, -1, :]
+        probs = next_probs(last_logit, temperature)
+        next_id = sample_from(probs, gen)
+        tokens.append(next_id)
+        next_id = torch.tensor([[next_id]])
+        passes += 1
+    return (tokens, passes)
+
