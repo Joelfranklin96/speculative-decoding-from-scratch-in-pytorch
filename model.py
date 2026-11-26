@@ -244,14 +244,14 @@ def draft_tokens(draft, prefix, gamma, temperature=1.0, gen=None):
     draft_probs = torch.empty((0, draft.vocab), dtype=torch.float32)
     reshaped_prefix = prefix.reshape(1, -1)
     while count < gamma:
-        reshaped_prefix = prefix.reshape(1, -1)
+        #reshaped_prefix = prefix.reshape(1, -1)
         logits, _ = draft.forward(reshaped_prefix)
         last_logit = logits[0, -1, :]
         probs = next_probs(last_logit, temperature)
         new_token_id = sample_from(probs, gen)
         draft_ids = torch.cat((draft_ids, torch.tensor([new_token_id])), dim=0)
         draft_probs = torch.cat((draft_probs, probs.reshape(1, -1)), dim=0)
-        prefix = torch.cat((prefix, torch.tensor([new_token_id])), dim=0)
+        reshaped_prefix = torch.cat((reshaped_prefix, torch.tensor([[new_token_id]])), dim=1)
         count += 1
     return (draft_ids, draft_probs)
 
