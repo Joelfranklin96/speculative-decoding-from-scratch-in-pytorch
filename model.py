@@ -119,6 +119,7 @@ class TinyGPT(nn.Module):
         self.blocks = nn.ModuleList([Block(d, n_heads) for _ in range(n_layers)])
         self.ln = nn.LayerNorm(d)
         self.head = nn.Linear(d, vocab, bias=False)
+        self.vocab = vocab
 
     def forward(self, idx, cache=None, return_hidden=False):
         # TODO: positions offset by the cached length; return (logits, new_cache[, hidden])
@@ -199,7 +200,7 @@ import torch.nn.functional as F
 
 def sample_from(probs, gen):
     # TODO: multinomial draw as an int
-    return torch.multinomial(probs, 1, generator=gen)
+    return torch.multinomial(probs, 1, generator=gen).item()
 
 def next_probs(logits_row, temperature):
     # TODO: softmax at temperature, or one-hot argmax at temperature 0
@@ -231,4 +232,33 @@ def generate(model, prompt, n, temperature=1.0, gen=None):
         next_id = torch.tensor([[next_id]])
         passes += 1
     return (tokens, passes)
+
+# Step 5 - draft_tokens
+import torch
+
+@torch.no_grad()
+def draft_tokens(draft, prefix, gamma, temperature=1.0, gen=None):
+    # TODO: gamma sequential samples from the draft; return (ids (gamma,), probs (gamma, vocab))
+    count = 0
+    draft_ids = torch.empty(0, dtype=torch.long)
+    draft_probs = torch.empty((0, draft.vocab), dtype=torch.float32)
+    reshaped_prefix = prefix.reshape(1, -1)
+    while count < gamma:
+        reshaped_prefix = prefix.reshape(1, -1)
+        logits, _ = draft.forward(reshaped_prefix)
+        last_logit = logits[0, -1, :]
+        probs = next_probs(last_logit, temperature)
+        new_token_id = sample_from(probs, gen)
+        draft_ids = torch.cat((draft_ids, torch.tensor([new_token_id])), dim=0)
+        draft_probs = torch.cat((draft_probs, probs.reshape(1, -1)), dim=0)
+        prefix = torch.cat((prefix, torch.tensor([new_token_id])), dim=0)
+        count += 1
+    return (draft_ids, draft_probs)
+
+
+def model_draft_fn(draft, temperature=1.0, gen=None):
+    # TODO: closure f(prefix, gamma)
+    def f(prefix, gamma):
+        return draft_tokens(draft, prefix, gamma, temperature, gen)
+    return f
 
