@@ -262,3 +262,35 @@ def model_draft_fn(draft, temperature=1.0, gen=None):
         return draft_tokens(draft, prefix, gamma, temperature, gen)
     return f
 
+# Step 6 - verify_tokens
+import torch
+
+def verify_tokens(target_probs, draft_ids, draft_probs, gen=None):
+    # TODO: accept with prob min(1, p/q); on first rejection resample from max(0, p - q) and stop;
+    # if all accepted, sample a bonus from the last row. Return (tokens, n_accepted).
+    # draft_ids - 1-d tensor
+    # draft_probs - 2-d tensor
+    n_accepted = 0
+    tokens = []
+    gamma, vocab = draft_probs.shape
+    for pos, index in enumerate(draft_ids):
+        p = target_probs[pos][index.item()].item()
+        q = draft_probs[pos][index.item()].item()
+        u = torch.rand((), generator=gen)
+        if u < min(1, p/q):
+            tokens.append(index.item())
+            n_accepted += 1
+        else:
+            diff = target_probs[pos] - draft_probs[pos]
+            probs = torch.where(diff > 0, diff, 0)
+            probs = probs/(probs.sum())
+            replacement_token = sample_from(probs, gen)
+            tokens.append(replacement_token)
+            break
+    if n_accepted == gamma:
+        probs = target_probs[gamma]
+        bonus_token = sample_from(probs, gen)
+        tokens.append(bonus_token)
+    
+    return (tokens, n_accepted)
+
